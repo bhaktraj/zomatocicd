@@ -45,7 +45,7 @@ pipeline {
                 sh 'npm install'
             }
         }
-        stage('OWASP Dependency-Check Vulnerabilities') {
+        stage('OWASP Dependency-Check') {
             steps {
                     dependencyCheck additionalArguments: ''' 
                     -o './'
@@ -56,6 +56,31 @@ pipeline {
                     dependencyCheckPublisher pattern: 'dependency-check-report.xml'
                     }
         }
-        
+        stage('Build docker images'){
+            steps{
+                script{
+                    dockerimage = docker.build(imagename + ":$BUILD_NUMBER", ".")
+
+                }
+                
+            }
+        }
+        stage('Upload to ECR'){
+            steps{
+            script{
+                docker.withRegistry(registeryurl, awscred){
+                    dockerimage.push("$BUILD_NUMBER")
+                    dockerimage.push("latest")
+                }
+            }
+        }
+        }
+        stage('deploy to ecs'){
+        steps{
+            withAWS(credentials:'awscred', region:'us-east-1'){
+                sh 'aws ecs update-service --cluster ${cluster} --service ${service} --force-new-deployment'
+            }
+        }
+    }
     }
 }
