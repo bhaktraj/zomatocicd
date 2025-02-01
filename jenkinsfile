@@ -1,0 +1,61 @@
+pipeline {
+    agent any
+    tools {
+        jdk 'jdk17'
+        nodejs 'node16'
+    }
+    environment {
+        scannerhome = tool 'sonarserver'
+        imagename = '058264453864.dkr.ecr.us-east-1.amazonaws.com/nodejsapp'
+        awscred = 'ecr:us-east-1:awscred'
+        registeryurl='https://058264453864.dkr.ecr.us-east-1.amazonaws.com/nodejsapp'
+        cluster='nojejsproject'
+        service='nodejsprojectservice'
+    }
+    stages{
+        stage('clean workspace'){
+            steps{
+                cleanWs()
+            }
+        }
+        stage("Fetch Code"){
+            steps{
+                git url: 'https://github.com/bhaktraj/zomatocicd.git', branch:'main'
+            }
+        }
+        stage("Sonarqube analyse "){
+            steps{
+                withSonarQubeEnv('sonarserver') {
+                   sh '''$scannerhome/bin/sonar-scanner -Dsonar.projectName=zomato \
+                    -Dsonar.projectKey=zomato '''
+              }
+            }
+        }
+        stage("Quality Gate") {
+            steps {
+                timeout(time: 1, unit: 'MINUTES') {
+                    // Parameter indicates whether to set pipeline to UNSTABLE if Quality Gate fails
+                    // true = set pipeline to UNSTABLE, false = don't
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+        stage("install Dependences"){
+            steps{
+                sh 'npm install'
+            }
+        }
+        stage('OWASP Dependency-Check Vulnerabilities') {
+            steps {
+                    dependencyCheck additionalArguments: ''' 
+                    -o './'
+                    -s './'
+                    -f 'ALL' 
+                    --prettyPrint''', odcInstallation: 'owasp'
+        
+                    dependencyCheckPublisher pattern: 'dependency-check-report.xml'
+                    }
+        }
+        
+    }
+}
